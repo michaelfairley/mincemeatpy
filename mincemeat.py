@@ -10,6 +10,7 @@ import os
 import hmac
 import logging
 import marshal
+import types
 
 VERSION = 0.0
 
@@ -37,6 +38,7 @@ class Protocol(asynchat.async_chat):
         if data:
             pdata = pickle.dumps(data)
             command['data-length'] = len(pdata)
+            logging.debug( "<- %s + %d" % (json.dumps(command), len(pdata)))
             self.push(json.dumps(command) + "\n" + pdata)
         else:
             logging.debug( "<- %s" % json.dumps(command))
@@ -52,8 +54,9 @@ class Protocol(asynchat.async_chat):
             else:
                 self.process_command(command)
         else: # Read the data segment from the previous command
-            data = pickle.loads(''.join(self.bugger))
+            data = pickle.loads(''.join(self.buffer))
             self.set_terminator("\n")
+            command = self.mid_command
             self.mid_command = None
             self.process_command(command, data)
         self.buffer = []
@@ -62,13 +65,12 @@ class Protocol(asynchat.async_chat):
         self.auth = os.urandom(20).encode("hex")
         self.send_command({"action": "challenge", "msg": self.auth})
 
-    def respond_to_challenge(self, command):
+    def respond_to_challenge(self, command, data):
         mac = hmac.new(self.password, command["msg"])
         self.send_command({"action": "auth", "mac": mac.digest().encode("hex")})
-        if not self.auth:
-            self.send_challenge()
+        self.post_auth_init()
 
-    def verify_auth(self, command):
+    def verify_auth(self, command, data):
         mac = hmac.new(self.password, self.auth)
         if command["mac"] == mac.digest().encode("hex"):
             self.auth = "Done"
@@ -79,16 +81,20 @@ class Protocol(asynchat.async_chat):
     def process_command(self, command, data=None):
         commands = {
             'challenge': self.respond_to_challenge,
-            'auth': self.verify_auth
+            'auth': self.verify_auth,
+            'disconnect': lambda x, y: self.handle_close(),
             }
 
         if command["action"] in commands:
-            commands[command["action"]](command)
+            commands[command["action"]](command, data)
+        else:
+            logging.critical("Unknown command received: %s" % (command["action"],)) 
         
 
 class Client(Protocol):
     def __init__(self):
         Protocol.__init__(self)
+        self.mapfn = self.reducefn = self.collectfn = None
         
     def conn(self, server, port):
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -100,6 +106,31 @@ class Client(Protocol):
 
     def handle_close(self):
         self.close()
+
+    def set_mapfn(self, command, mapfn):
+        self.mapfn = types.FunctionType(marshal.loads(mapfn), globals(), 'mapfn')
+
+    def set_collectfn(self, command, collectfn):
+        self.collectfn = types.FunctionType(marshal.loads(collectfn), globals(), 'collectfn')
+
+    def set_reducefn(self, command, reducefn):
+        self.reducefn = types.FunctionType(marshal.loads(reducefn), globals(), 'reducefn')
+
+    def process_command(self, command, data=None):
+        commands = {
+            'mapfn': self.set_mapfn,
+            'collectfn': self.set_collectfn,
+            'reducefn': self.set_reducefn,
+            }
+
+        if command["action"] in commands:
+            commands[command["action"]](command, data)
+        else:
+            Protocol.process_command(self, command, data)
+
+    def post_auth_init(self):
+        if not self.auth:
+            self.send_challenge()
 
 
 class Server(asyncore.dispatcher, object):
@@ -147,6 +178,16 @@ class ServerChannel(Protocol):
 
     def start_auth(self):
         self.send_challenge()
+
+    def post_auth_init(self):
+        if self.server.mapfn:
+            self.send_command({'action':'mapfn'}, marshal.dumps(self.server.mapfn.func_code))
+        if self.server.reducefn:
+            self.send_command({'action':'reducefn'}, marshal.dumps(self.server.reducefn.func_code))
+        if self.server.collectfn:
+            self.send_command({'action':'collectfn'}, marshal.dumps(self.server.collectfn.func_code))
+        self.send_command({'action':'disconnect'})
+        self.handle_close()
 
     
 
