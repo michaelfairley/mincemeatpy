@@ -11,6 +11,7 @@ import hmac
 import logging
 import marshal
 import types
+import hashlib
 
 VERSION = 0.0
 
@@ -66,12 +67,12 @@ class Protocol(asynchat.async_chat):
         self.send_command({"action": "challenge", "msg": self.auth})
 
     def respond_to_challenge(self, command, data):
-        mac = hmac.new(self.password, command["msg"])
+        mac = hmac.new(self.password, command["msg"], hashlib.sha1)
         self.send_command({"action": "auth", "mac": mac.digest().encode("hex")})
         self.post_auth_init()
 
     def verify_auth(self, command, data):
-        mac = hmac.new(self.password, self.auth)
+        mac = hmac.new(self.password, self.auth, hashlib.sha1)
         if command["mac"] == mac.digest().encode("hex"):
             self.auth = "Done"
             logging.info("Authorized other end")
