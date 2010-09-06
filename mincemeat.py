@@ -1,17 +1,20 @@
 #!/usr/bin/python
 
-import optparse
 import asynchat
 import asyncore
-import socket
-import json
 import cPickle as pickle
-import os
+import datetime
+import hashlib
 import hmac
+import json
 import logging
 import marshal
+import optparse
+import os
+import socket
+import threading
+import time
 import types
-import hashlib
 
 VERSION = 0.0
 
@@ -59,6 +62,9 @@ class Protocol(asynchat.async_chat):
             self.set_terminator("\n")
             command = self.mid_command
             self.mid_command = None
+            if not self.auth == "Done":
+                logger.fatal("Recieved pickled data from unauthed source")
+                sys.exit(1)
             self.process_command(command, data)
         self.buffer = []
 
@@ -90,6 +96,7 @@ class Protocol(asynchat.async_chat):
             commands[command["action"]](command, data)
         else:
             logging.critical("Unknown command received: %s" % (command["action"],)) 
+            self.handle_close()
         
 
 class Client(Protocol):
@@ -117,11 +124,32 @@ class Client(Protocol):
     def set_reducefn(self, command, reducefn):
         self.reducefn = types.FunctionType(marshal.loads(reducefn), globals(), 'reducefn')
 
+    def call_mapfn(self, command, data):
+        results = {}
+        for k, v in self.mapfn(command['mapid'], data):
+            if k not in results:
+                results[k] = []
+            results[k].append(v)
+        if self.collectfn:
+            for k in results:
+                results[k] = [self.collectfn(k, results[k])]
+        self.send_command({'action':'mapdone', 'mapid':command['mapid']}, results)
+
+    def call_reducefn(self, command, data):
+        results = self.reducefn(command['reduceid'], data)
+        self.send_command({'action':'reducedone','reduceid':command['reduceid']}, results)
+        
+    def ping(self, command, data):
+        self.send_command({'action':'pong'})
+
     def process_command(self, command, data=None):
         commands = {
             'mapfn': self.set_mapfn,
             'collectfn': self.set_collectfn,
             'reducefn': self.set_reducefn,
+            'map': self.call_mapfn,
+            'reduce': self.call_reducefn,
+            'ping': self.ping,
             }
 
         if command["action"] in commands:
@@ -149,6 +177,7 @@ class Server(asyncore.dispatcher, object):
         self.bind(("", port))
         self.listen(1)
         asyncore.loop()
+        return self.taskmanager.results
 
     def handle_accept(self):
         conn, addr = self.accept()
@@ -160,6 +189,7 @@ class Server(asyncore.dispatcher, object):
 
     def set_datasource(self, ds):
         self._datasource = ds
+        self.taskmanager = TaskManager(self._datasource, self)
     
     def get_datasource(self):
         return self._datasource
@@ -180,22 +210,106 @@ class ServerChannel(Protocol):
     def start_auth(self):
         self.send_challenge()
 
+    def start_new_task(self):
+        command, data = self.server.taskmanager.next_task()
+        self.send_command(command, data)
+
+    def pong(self, command, data):
+        self.last_pong = datetime.datetime.now()
+
+    def map_done(self, command, data):
+        self.server.taskmanager.map_done(command, data)
+        self.start_new_task()
+
+    def reduce_done(self, command, data):
+        self.server.taskmanager.reduce_done(command, data)
+        self.start_new_task()
+
+    def process_command(self, command, data=None):
+        commands = {
+            'pong': self.pong,
+            'mapdone': self.map_done,
+            'reducedone': self.reduce_done,
+            }
+
+        if command["action"] in commands:
+            commands[command["action"]](command, data)
+        else:
+            Protocol.process_command(self, command, data)
+
+    def ping_pong(self):
+        self.last_pong = datetime.datetime.now()
+        while True:
+            time.sleep(60)
+            if self.last_pong + datetime.timedelta(seconds=80) < datetime.datetime.now():
+                logging.info("timeout")
+                self.handle_close()
+                break
+            self.send_command({'action':'ping'})
+
     def post_auth_init(self):
+        self.ping_pong_thread = threading.Thread(target=self.ping_pong)
+        self.ping_pong_thread.daemon = True
+        self.ping_pong_thread.start()
         if self.server.mapfn:
             self.send_command({'action':'mapfn'}, marshal.dumps(self.server.mapfn.func_code))
         if self.server.reducefn:
             self.send_command({'action':'reducefn'}, marshal.dumps(self.server.reducefn.func_code))
         if self.server.collectfn:
             self.send_command({'action':'collectfn'}, marshal.dumps(self.server.collectfn.func_code))
-        self.send_command({'action':'disconnect'})
-        self.handle_close()
-
+        self.start_new_task()
     
+class TaskManager():
+    START = 0
+    MAPPING = 1
+    REDUCING = 2
+    FINISHED = 3
+
+    def __init__(self, datasource, server):
+        self.datasource = datasource
+        self.server = server
+        self.state = TaskManager.START
+
+    def next_task(self):
+        #TODO: Make the state changes threadsafe
+        if self.state == TaskManager.START:
+            self.map_iter = self.datasource.iteritems()
+            self.map_results = {}
+            self.state = TaskManager.MAPPING
+        if self.state == TaskManager.MAPPING:
+            try:
+                map_item = self.map_iter.next()
+                return ({'action':'map', 'mapid':map_item[0]}, map_item[1])
+            except StopIteration:
+                self.state = TaskManager.REDUCING
+                self.reduce_iter = self.map_results.iteritems()
+                self.results = {}
+            pass
+        if self.state == TaskManager.REDUCING:
+            try:
+                reduce_item = self.reduce_iter.next()
+                return ({'action':'reduce', 'reduceid':reduce_item[0]}, reduce_item[1])
+            except StopIteration:
+                self.state = TaskManager.FINISHED
+            pass
+        if self.state == TaskManager.FINISHED:
+            self.server.handle_close()
+            return ({'action':'disconnect'}, None)
+    
+    def map_done(self, command, data):
+        for (key, values) in data.iteritems():
+            if key not in self.map_results:
+                self.map_results[key] = []
+            self.map_results[key].extend(values)
+                                
+    def reduce_done(self, command, data):
+        self.results[command['reduceid']] = data
 
 def run_client():
     parser = optparse.OptionParser(usage="%prog [options]", version="%%prog %s"%VERSION)
     parser.add_option("-p", "--password", dest="password", help="password")
     parser.add_option("-P", "--port", dest="port", type="int", default=DEFAULT_PORT, help="port")
+    #TODO: add -v option for verbose
 
     (options, args) = parser.parse_args()
 
