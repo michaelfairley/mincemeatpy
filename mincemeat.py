@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 import asynchat
 import asyncore
@@ -6,7 +6,6 @@ import cPickle as pickle
 import datetime
 import hashlib
 import hmac
-import json
 import logging
 import marshal
 import optparse
@@ -39,47 +38,54 @@ class Protocol(asynchat.async_chat):
         self.buffer.append(data)
 
     def send_command(self, command, data=None):
+        if not ":" in command:
+            command += ":"
         if data:
             pdata = pickle.dumps(data)
-            command['data-length'] = len(pdata)
-            logging.debug( "<- %s + %d" % (json.dumps(command), len(pdata)))
-            self.push(json.dumps(command) + "\n" + pdata)
+            command += str(len(pdata))
+            logging.debug( "<- %s" % command)
+            self.push(command + "\n" + pdata)
         else:
-            logging.debug( "<- %s" % json.dumps(command))
-            self.push(json.dumps(command) + "\n")
+            logging.debug( "<- %s" % command)
+            self.push(command + "\n")
 
     def found_terminator(self):
-        if not self.mid_command:
+        if not self.auth == "Done":
+            command, data = (''.join(self.buffer).split(":",1))
+            self.process_unauthed_command(command, data)
+        elif not self.mid_command:
             logging.debug("-> %s" % ''.join(self.buffer))
-            command = json.loads(''.join(self.buffer))
-            if 'data-length' in command:
-                self.set_terminator(command['data-length'])
+            command, length = (''.join(self.buffer)).split(":", 1)
+            if command == "challenge":
+                self.process_command(command, length)
+            elif length:
+                self.set_terminator(int(length))
                 self.mid_command = command
             else:
                 self.process_command(command)
         else: # Read the data segment from the previous command
+            if not self.auth == "Done":
+                logger.fatal("Recieved pickled data from unauthed source")
+                sys.exit(1)
             data = pickle.loads(''.join(self.buffer))
             self.set_terminator("\n")
             command = self.mid_command
             self.mid_command = None
-            if not self.auth == "Done":
-                logger.fatal("Recieved pickled data from unauthed source")
-                sys.exit(1)
             self.process_command(command, data)
         self.buffer = []
 
     def send_challenge(self):
         self.auth = os.urandom(20).encode("hex")
-        self.send_command({"action": "challenge", "msg": self.auth})
+        self.send_command(":".join(["challenge",self.auth]))
 
     def respond_to_challenge(self, command, data):
-        mac = hmac.new(self.password, command["msg"], hashlib.sha1)
-        self.send_command({"action": "auth", "mac": mac.digest().encode("hex")})
+        mac = hmac.new(self.password, data, hashlib.sha1)
+        self.send_command(":".join(["auth", mac.digest().encode("hex")]))
         self.post_auth_init()
 
     def verify_auth(self, command, data):
         mac = hmac.new(self.password, self.auth, hashlib.sha1)
-        if command["mac"] == mac.digest().encode("hex"):
+        if data == mac.digest().encode("hex"):
             self.auth = "Done"
             logging.info("Authorized other end")
         else:
@@ -88,14 +94,26 @@ class Protocol(asynchat.async_chat):
     def process_command(self, command, data=None):
         commands = {
             'challenge': self.respond_to_challenge,
+            'disconnect': lambda x, y: self.handle_close(),
+            }
+
+        if command in commands:
+            commands[command](command, data)
+        else:
+            logging.critical("Unknown command received: %s" % (command,)) 
+            self.handle_close()
+
+    def process_unauthed_command(self, command, data=None):
+        commands = {
+            'challenge': self.respond_to_challenge,
             'auth': self.verify_auth,
             'disconnect': lambda x, y: self.handle_close(),
             }
 
-        if command["action"] in commands:
-            commands[command["action"]](command, data)
+        if command in commands:
+            commands[command](command, data)
         else:
-            logging.critical("Unknown command received: %s" % (command["action"],)) 
+            logging.critical("Unknown unauthed command received: %s" % (command,)) 
             self.handle_close()
         
 
@@ -126,21 +144,21 @@ class Client(Protocol):
 
     def call_mapfn(self, command, data):
         results = {}
-        for k, v in self.mapfn(command['mapid'], data):
+        for k, v in self.mapfn(data[0], data[1]):
             if k not in results:
                 results[k] = []
             results[k].append(v)
         if self.collectfn:
             for k in results:
                 results[k] = [self.collectfn(k, results[k])]
-        self.send_command({'action':'mapdone', 'mapid':command['mapid']}, results)
+        self.send_command('mapdone', (data[0], results))
 
     def call_reducefn(self, command, data):
-        results = self.reducefn(command['reduceid'], data)
-        self.send_command({'action':'reducedone','reduceid':command['reduceid']}, results)
+        results = self.reducefn(data[0], data[1])
+        self.send_command('reducedone', (data[0], results))
         
     def ping(self, command, data):
-        self.send_command({'action':'pong'})
+        self.send_command('pong')
 
     def process_command(self, command, data=None):
         commands = {
@@ -152,8 +170,8 @@ class Client(Protocol):
             'ping': self.ping,
             }
 
-        if command["action"] in commands:
-            commands[command["action"]](command, data)
+        if command in commands:
+            commands[command](command, data)
         else:
             Protocol.process_command(self, command, data)
 
@@ -211,18 +229,20 @@ class ServerChannel(Protocol):
         self.send_challenge()
 
     def start_new_task(self):
-        command, data = self.server.taskmanager.next_task()
+        command, data = self.server.taskmanager.next_task(self)
+        if command == None:
+            return
         self.send_command(command, data)
 
     def pong(self, command, data):
         self.last_pong = datetime.datetime.now()
 
     def map_done(self, command, data):
-        self.server.taskmanager.map_done(command, data)
+        self.server.taskmanager.map_done(data)
         self.start_new_task()
 
     def reduce_done(self, command, data):
-        self.server.taskmanager.reduce_done(command, data)
+        self.server.taskmanager.reduce_done(data)
         self.start_new_task()
 
     def process_command(self, command, data=None):
@@ -232,8 +252,8 @@ class ServerChannel(Protocol):
             'reducedone': self.reduce_done,
             }
 
-        if command["action"] in commands:
-            commands[command["action"]](command, data)
+        if command in commands:
+            commands[command](command, data)
         else:
             Protocol.process_command(self, command, data)
 
@@ -245,18 +265,18 @@ class ServerChannel(Protocol):
                 logging.info("timeout")
                 self.handle_close()
                 break
-            self.send_command({'action':'ping'})
+            self.send_command('ping')
 
     def post_auth_init(self):
         self.ping_pong_thread = threading.Thread(target=self.ping_pong)
         self.ping_pong_thread.daemon = True
         self.ping_pong_thread.start()
         if self.server.mapfn:
-            self.send_command({'action':'mapfn'}, marshal.dumps(self.server.mapfn.func_code))
+            self.send_command('mapfn', marshal.dumps(self.server.mapfn.func_code))
         if self.server.reducefn:
-            self.send_command({'action':'reducefn'}, marshal.dumps(self.server.reducefn.func_code))
+            self.send_command('reducefn', marshal.dumps(self.server.reducefn.func_code))
         if self.server.collectfn:
-            self.send_command({'action':'collectfn'}, marshal.dumps(self.server.collectfn.func_code))
+            self.send_command('collectfn', marshal.dumps(self.server.collectfn.func_code))
         self.start_new_task()
     
 class TaskManager():
@@ -270,40 +290,52 @@ class TaskManager():
         self.server = server
         self.state = TaskManager.START
 
-    def next_task(self):
-        #TODO: Make the state changes threadsafe
+    def next_task(self, channel):
         if self.state == TaskManager.START:
             self.map_iter = self.datasource.iteritems()
+            self.working_maps = []
             self.map_results = {}
+            self.waiting_for_maps = []
             self.state = TaskManager.MAPPING
         if self.state == TaskManager.MAPPING:
             try:
                 map_item = self.map_iter.next()
-                return ({'action':'map', 'mapid':map_item[0]}, map_item[1])
+                self.working_maps.append(map_item[0])
+                return ('map', map_item)
             except StopIteration:
+                if len(self.working_maps) > 0:
+                    self.waiting_for_maps.append(channel)
+                    return (None, None)
                 self.state = TaskManager.REDUCING
                 self.reduce_iter = self.map_results.iteritems()
+                self.working_reduces = []
                 self.results = {}
-            pass
+                while len(self.waiting_for_maps) > 0:
+                    waiting_channel = self.waiting_for_maps.pop()
+                    waiting_channel.start_new_task()
         if self.state == TaskManager.REDUCING:
             try:
                 reduce_item = self.reduce_iter.next()
-                return ({'action':'reduce', 'reduceid':reduce_item[0]}, reduce_item[1])
+                self.working_reduces.append(reduce_item[0])
+                return ('reduce', reduce_item)
             except StopIteration:
+                if len(self.working_reduces) > 0:
+                    pass
                 self.state = TaskManager.FINISHED
-            pass
         if self.state == TaskManager.FINISHED:
             self.server.handle_close()
-            return ({'action':'disconnect'}, None)
+            return ('disconnect', None)
     
-    def map_done(self, command, data):
-        for (key, values) in data.iteritems():
+    def map_done(self, data):
+        for (key, values) in data[1].iteritems():
             if key not in self.map_results:
                 self.map_results[key] = []
             self.map_results[key].extend(values)
+        self.working_maps.remove(data[0])
                                 
-    def reduce_done(self, command, data):
-        self.results[command['reduceid']] = data
+    def reduce_done(self, data):
+        self.results[data[0]] = data[1]
+        self.working_reduces.remove(data[0])
 
 def run_client():
     parser = optparse.OptionParser(usage="%prog [options]", version="%%prog %s"%VERSION)
