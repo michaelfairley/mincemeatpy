@@ -190,7 +190,7 @@ class Server(asyncore.dispatcher, object):
         self.datasource = None
         self.password = None
 
-    def run_server(self, password, port=DEFAULT_PORT):
+    def run_server(self, password="", port=DEFAULT_PORT):
         self.password = password
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.bind(("", port))
@@ -342,7 +342,7 @@ class TaskManager():
 
 def run_client():
     parser = optparse.OptionParser(usage="%prog [options]", version="%%prog %s"%VERSION)
-    parser.add_option("-p", "--password", dest="password", help="password")
+    parser.add_option("-p", "--password", dest="password", default="", help="password")
     parser.add_option("-P", "--port", dest="port", type="int", default=DEFAULT_PORT, help="port")
     #TODO: add -v option for verbose
 
