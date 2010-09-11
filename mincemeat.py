@@ -10,6 +10,7 @@ import logging
 import marshal
 import optparse
 import os
+import random
 import socket
 import threading
 import time
@@ -293,49 +294,51 @@ class TaskManager():
     def next_task(self, channel):
         if self.state == TaskManager.START:
             self.map_iter = self.datasource.iteritems()
-            self.working_maps = []
+            self.working_maps = {}
             self.map_results = {}
-            self.waiting_for_maps = []
+            #self.waiting_for_maps = []
             self.state = TaskManager.MAPPING
         if self.state == TaskManager.MAPPING:
             try:
                 map_item = self.map_iter.next()
-                self.working_maps.append(map_item[0])
+                self.working_maps[map_item[0]] = map_item[1]
                 return ('map', map_item)
             except StopIteration:
                 if len(self.working_maps) > 0:
-                    self.waiting_for_maps.append(channel)
-                    return (None, None)
+                    key = random.choice(self.working_maps.keys())
+                    return ('map', (key, self.working_maps[key]))
                 self.state = TaskManager.REDUCING
                 self.reduce_iter = self.map_results.iteritems()
-                self.working_reduces = []
+                self.working_reduces = {}
                 self.results = {}
-                while len(self.waiting_for_maps) > 0:
-                    waiting_channel = self.waiting_for_maps.pop()
-                    waiting_channel.start_new_task()
         if self.state == TaskManager.REDUCING:
             try:
                 reduce_item = self.reduce_iter.next()
-                self.working_reduces.append(reduce_item[0])
+                self.working_reduces[reduce_item[0]] = reduce_item[1]
                 return ('reduce', reduce_item)
             except StopIteration:
                 if len(self.working_reduces) > 0:
-                    pass
+                    key = random.choice(self.working_reduces.keys())
+                    return ('reduce', (key, self.working_reduces[key]))
                 self.state = TaskManager.FINISHED
         if self.state == TaskManager.FINISHED:
             self.server.handle_close()
             return ('disconnect', None)
     
     def map_done(self, data):
+        if not data[0] in self.working_maps:
+            return
         for (key, values) in data[1].iteritems():
             if key not in self.map_results:
                 self.map_results[key] = []
             self.map_results[key].extend(values)
-        self.working_maps.remove(data[0])
+        del self.working_maps[data[0]]
                                 
     def reduce_done(self, data):
+        if not data[0] in self.working_reduces:
+            return
         self.results[data[0]] = data[1]
-        self.working_reduces.remove(data[0])
+        del self.working_reduces[data[0]]
 
 def run_client():
     parser = optparse.OptionParser(usage="%prog [options]", version="%%prog %s"%VERSION)
