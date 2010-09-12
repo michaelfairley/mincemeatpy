@@ -20,7 +20,6 @@ import types
 VERSION = 0.0
 
 
-logging.basicConfig(level=logging.DEBUG)
 DEFAULT_PORT = 11235
 
 
@@ -345,9 +344,14 @@ def run_client():
     parser = optparse.OptionParser(usage="%prog [options]", version="%%prog %s"%VERSION)
     parser.add_option("-p", "--password", dest="password", default="", help="password")
     parser.add_option("-P", "--port", dest="port", type="int", default=DEFAULT_PORT, help="port")
-    #TODO: add -v option for verbose
+    parser.add_option("-v", "--verbose", dest="verbose", action="store_true")
 
     (options, args) = parser.parse_args()
+                      
+
+    if options.verbose:
+        logging.basicConfig(level=logging.DEBUG)
+
 
     client = Client()
     client.password = options.password
