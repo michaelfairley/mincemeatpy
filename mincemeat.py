@@ -12,6 +12,7 @@ import optparse
 import os
 import random
 import socket
+import sys
 import threading
 import time
 import types
@@ -66,7 +67,7 @@ class Protocol(asynchat.async_chat):
                 self.process_command(command)
         else: # Read the data segment from the previous command
             if not self.auth == "Done":
-                logger.fatal("Recieved pickled data from unauthed source")
+                logging.fatal("Recieved pickled data from unauthed source")
                 sys.exit(1)
             data = pickle.loads(''.join(self.buffer))
             self.set_terminator("\n")
