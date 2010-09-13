@@ -45,6 +45,8 @@ VERSION = 0.0
 
 DEFAULT_PORT = 11235
 
+logging.basicConfig(level=logging.INFO)
+
 
 class Protocol(asynchat.async_chat):
     def __init__(self, conn=None):
@@ -181,9 +183,6 @@ class Client(Protocol):
         results = self.reducefn(data[0], data[1])
         self.send_command('reducedone', (data[0], results))
         
-    def ping(self, command, data):
-        self.send_command('pong')
-
     def process_command(self, command, data=None):
         commands = {
             'mapfn': self.set_mapfn,
@@ -191,7 +190,6 @@ class Client(Protocol):
             'reducefn': self.set_reducefn,
             'map': self.call_mapfn,
             'reduce': self.call_reducefn,
-            'ping': self.ping,
             }
 
         if command in commands:
@@ -247,6 +245,7 @@ class ServerChannel(Protocol):
         self.start_auth()
 
     def handle_close(self):
+        logging.info("Client disconnected")
         self.close()
 
     def start_auth(self):
@@ -258,9 +257,6 @@ class ServerChannel(Protocol):
             return
         self.send_command(command, data)
 
-    def pong(self, command, data):
-        self.last_pong = datetime.datetime.now()
-
     def map_done(self, command, data):
         self.server.taskmanager.map_done(data)
         self.start_new_task()
@@ -271,7 +267,6 @@ class ServerChannel(Protocol):
 
     def process_command(self, command, data=None):
         commands = {
-            'pong': self.pong,
             'mapdone': self.map_done,
             'reducedone': self.reduce_done,
             }
@@ -281,20 +276,7 @@ class ServerChannel(Protocol):
         else:
             Protocol.process_command(self, command, data)
 
-    def ping_pong(self):
-        self.last_pong = datetime.datetime.now()
-        while True:
-            time.sleep(60)
-            if self.last_pong + datetime.timedelta(seconds=80) < datetime.datetime.now():
-                logging.info("timeout")
-                self.handle_close()
-                break
-            self.send_command('ping')
-
     def post_auth_init(self):
-        self.ping_pong_thread = threading.Thread(target=self.ping_pong)
-        self.ping_pong_thread.daemon = True
-        self.ping_pong_thread.start()
         if self.server.mapfn:
             self.send_command('mapfn', marshal.dumps(self.server.mapfn.func_code))
         if self.server.reducefn:
