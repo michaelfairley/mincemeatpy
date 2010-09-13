@@ -332,8 +332,10 @@ class TaskManager():
             return ('disconnect', None)
     
     def map_done(self, data):
+        # Don't use the results if they've already been counted
         if not data[0] in self.working_maps:
             return
+
         for (key, values) in data[1].iteritems():
             if key not in self.map_results:
                 self.map_results[key] = []
@@ -341,8 +343,10 @@ class TaskManager():
         del self.working_maps[data[0]]
                                 
     def reduce_done(self, data):
+        # Don't use the results if they've already been counted
         if not data[0] in self.working_reduces:
             return
+
         self.results[data[0]] = data[1]
         del self.working_reduces[data[0]]
 
