@@ -45,7 +45,6 @@ VERSION = 0.0
 
 DEFAULT_PORT = 11235
 
-logging.basicConfig(level=logging.INFO)
 
 
 class Protocol(asynchat.async_chat):
@@ -350,13 +349,14 @@ def run_client():
     parser.add_option("-p", "--password", dest="password", default="", help="password")
     parser.add_option("-P", "--port", dest="port", type="int", default=DEFAULT_PORT, help="port")
     parser.add_option("-v", "--verbose", dest="verbose", action="store_true")
+    parser.add_option("-V", "--loud", dest="loud", action="store_true")
 
     (options, args) = parser.parse_args()
                       
-
     if options.verbose:
+        logging.basicConfig(level=logging.INFO)
+    if options.loud:
         logging.basicConfig(level=logging.DEBUG)
-
 
     client = Client()
     client.password = options.password
