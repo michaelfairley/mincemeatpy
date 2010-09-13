@@ -1,0 +1,11 @@
+mincemeat.py: MapReduce on Python
+
+mincemeat.py is licensed under the MIT license. See LICENSE for more details
+
+
+Run the example with:
+python example.py
+
+and a worker with:
+python mincemeat.py -p changeme [server address]
+
