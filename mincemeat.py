@@ -112,7 +112,7 @@ class Protocol(asynchat.async_chat):
         mac = hmac.new(self.password, self.auth, hashlib.sha1)
         if data == mac.digest().encode("hex"):
             self.auth = "Done"
-            logging.info("Authorized other end")
+            logging.info("Authenticated other end")
         else:
             self.handle_close()
 
