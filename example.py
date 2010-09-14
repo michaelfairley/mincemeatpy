@@ -20,7 +20,7 @@ def reducefn(k, vs):
 s = mincemeat.Server()
 
 # The data source can be any dictionary-like object
-s.datasource = dict((i, data[i]) for i in xrange(len(data)))
+s.datasource = dict(enumerate(data))
 s.mapfn = mapfn
 s.reducefn = reducefn
 
