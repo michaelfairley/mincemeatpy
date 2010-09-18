@@ -26,7 +26,6 @@
 import asynchat
 import asyncore
 import cPickle as pickle
-import datetime
 import hashlib
 import hmac
 import logging
@@ -36,8 +35,6 @@ import os
 import random
 import socket
 import sys
-import threading
-import time
 import types
 
 VERSION = 0.0
@@ -101,7 +98,7 @@ class Protocol(asynchat.async_chat):
 
     def send_challenge(self):
         self.auth = os.urandom(20).encode("hex")
-        self.send_command(":".join(["challenge",self.auth]))
+        self.send_command(":".join(["challenge", self.auth]))
 
     def respond_to_challenge(self, command, data):
         mac = hmac.new(self.password, data, hashlib.sha1)
