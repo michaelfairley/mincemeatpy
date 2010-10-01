@@ -283,7 +283,7 @@ class ServerChannel(Protocol):
             self.send_command('collectfn', marshal.dumps(self.server.collectfn.func_code))
         self.start_new_task()
     
-class TaskManager():
+class TaskManager:
     START = 0
     MAPPING = 1
     REDUCING = 2
