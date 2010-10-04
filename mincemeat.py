@@ -296,14 +296,15 @@ class TaskManager:
 
     def next_task(self, channel):
         if self.state == TaskManager.START:
-            self.map_iter = self.datasource.iteritems()
+            self.map_iter = iter(self.datasource)
             self.working_maps = {}
             self.map_results = {}
             #self.waiting_for_maps = []
             self.state = TaskManager.MAPPING
         if self.state == TaskManager.MAPPING:
             try:
-                map_item = self.map_iter.next()
+                map_key = self.map_iter.next()
+                map_item = map_key, self.datasource[map_key]
                 self.working_maps[map_item[0]] = map_item[1]
                 return ('map', map_item)
             except StopIteration:
