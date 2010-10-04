@@ -214,7 +214,12 @@ class Server(asyncore.dispatcher, object):
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.bind(("", port))
         self.listen(1)
-        asyncore.loop()
+        try:
+            asyncore.loop()
+        except:
+            self.close_all()
+            raise
+        
         return self.taskmanager.results
 
     def handle_accept(self):
