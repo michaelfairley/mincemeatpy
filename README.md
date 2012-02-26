@@ -17,8 +17,8 @@ Download
 --------
 
 * Just [mincemeat.py](https://raw.github.com/michaelfairley/mincemeatpy/master/mincemeat.py) (v 0.1.2)
-* The full 0.1.2 release (includes documentation and examples)
-* Clone this git repository: `https://github.com/michaelfairley/mincemeatpy.git`
+* The [full 0.1.2 release](https://github.com/michaelfairley/mincemeatpy/zipball/v0.1.2) (includes documentation and examples)
+* Clone this git repository: `git clone https://github.com/michaelfairley/mincemeatpy.git`
 
 Example
 -------
