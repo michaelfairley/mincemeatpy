@@ -6,6 +6,7 @@ Introduction
 mincemeat.py is a Python implementation of the [MapReduce](http://en.wikipedia.org/wiki/Mapreduce) distributed computing framework.
 
 mincemeat.py is:
+
 * Lightweight - All of the code is contained in a single Python file (currently weighing in at <13kB) that depends only on the Python Standard Library. Any computer with Python and mincemeat.py can be a part of your cluster.
 * Fault tolerant - Workers (clients) can join and leave the cluster at any time without affecting the entire process.
 * Secure - mincemeat.py authenticates both ends of every connection, ensuring that only authorized code is executed.
