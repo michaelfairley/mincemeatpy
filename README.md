@@ -76,3 +76,8 @@ And the server will print out:
 ```
 
 This example was overly simplistic, but changing the datasource to be a collection of large files and running the client on multiple machines will work just as well. In fact, mincemeat.py has been used to produce a word frequency lists for many gigabytes of text using a slightly modified version of this code.
+
+Imports
+-------
+
+One potential gotcha when using mincemeat.py: Your `mapfn` and `reducefn` functions don't have access to their enclosing environment, including imported modules. If you need to use an imported module in one of these functions, be sure to include `import whatever` in the functions themselves.
