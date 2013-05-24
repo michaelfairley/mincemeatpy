@@ -85,4 +85,4 @@ One potential gotcha when using mincemeat.py: Your `mapfn` and `reducefn` functi
 
 Python 3 support
 -------
-@ziyuang has a fork of mincemeat.py that's comptable with python 3: ziyuang/mincemeatpy
+[ziyuang](https://github.com/ziyuang/mincemeatpy) has a fork of mincemeat.py that's comptable with python 3: [ziyuang/mincemeatpy](https://github.com/ziyuang/mincemeatpy)
