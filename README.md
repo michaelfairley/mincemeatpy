@@ -81,3 +81,8 @@ Imports
 -------
 
 One potential gotcha when using mincemeat.py: Your `mapfn` and `reducefn` functions don't have access to their enclosing environment, including imported modules. If you need to use an imported module in one of these functions, be sure to include `import whatever` in the functions themselves.
+
+
+Python 3 support
+-------
+@ziyuang has a fork of mincemeat.py that's comptable with python 3: ziyuang/mincemeatpy
