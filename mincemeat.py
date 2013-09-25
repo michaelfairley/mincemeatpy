@@ -366,6 +366,7 @@ def run_client():
     parser.add_option("-v", "--verbose", dest="verbose", action="store_true")
     parser.add_option("-V", "--loud", dest="loud", action="store_true")
     parser.add_option("-s", "--sleep", dest="sleep", default=DEFAULT_CLIENT_TIME_SLEEP_SECONDS, help="sleep")
+    parser.add_option("-8", "--run_forever", dest="run_forever", action="store_true")
 
     (options, args) = parser.parse_args()
 
@@ -377,18 +378,22 @@ def run_client():
     sleep_secs = float(options.sleep)
 
     while True:
-        try:
-            client = Client()
-            client.password = options.password
-            client.conn(args[0], options.port)
+        while True:
+            try:
+                client = Client()
+                client.password = options.password
+                client.conn(args[0], options.port)
+                break
+
+            except socket.error:
+                time.sleep(sleep_secs)
+
+            except:
+                print "Unexpected error in run_client:", sys.exc_info()[0]
+                break;
+
+        if not options.run_forever:
             break
-
-        except socket.error:
-            time.sleep(sleep_secs)
-
-        except:
-            print "Unexpected error in run_client:", sys.exc_info()[0]
-            break;
 
 
 if __name__ == '__main__':
