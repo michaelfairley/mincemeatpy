@@ -37,7 +37,7 @@ import socket
 import sys
 import types
 
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 
 
 DEFAULT_PORT = 11235
