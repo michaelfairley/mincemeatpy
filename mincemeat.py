@@ -35,21 +35,23 @@ import os
 import random
 import socket
 import sys
+import time
 import types
 
 VERSION = "0.1.2"
 
 
 DEFAULT_PORT = 11235
+DEFAULT_CLIENT_TIME_SLEEP_SECONDS = 1
 
 
 
 class Protocol(asynchat.async_chat):
-    def __init__(self, conn=None):
+    def __init__(self, conn=None, map=None):
         if conn:
-            asynchat.async_chat.__init__(self, conn)
+            asynchat.async_chat.__init__(self, conn, map=map)
         else:
-            asynchat.async_chat.__init__(self)
+            asynchat.async_chat.__init__(self, map=map)
 
         self.set_terminator("\n")
         self.buffer = []
@@ -199,15 +201,19 @@ class Client(Protocol):
         if not self.auth:
             self.send_challenge()
 
+    def handle_error(self):
+        raise
+
 
 class Server(asyncore.dispatcher, object):
-    def __init__(self):
-        asyncore.dispatcher.__init__(self)
+    def __init__(self, map={}):
+        asyncore.dispatcher.__init__(self, map=map)
         self.mapfn = None
         self.reducefn = None
         self.collectfn = None
         self.datasource = None
         self.password = None
+        self.socket_map = map
 
     def run_server(self, password="", port=DEFAULT_PORT):
         self.password = password
@@ -215,16 +221,16 @@ class Server(asyncore.dispatcher, object):
         self.bind(("", port))
         self.listen(1)
         try:
-            asyncore.loop()
+            asyncore.loop(map=self.socket_map)
         except:
             self.close_all()
             raise
-        
+
         return self.taskmanager.results
 
     def handle_accept(self):
         conn, addr = self.accept()
-        sc = ServerChannel(conn, self)
+        sc = ServerChannel(conn, self, map=self.socket_map)
         sc.password = self.password
 
     def handle_close(self):
@@ -233,7 +239,7 @@ class Server(asyncore.dispatcher, object):
     def set_datasource(self, ds):
         self._datasource = ds
         self.taskmanager = TaskManager(self._datasource, self)
-    
+
     def get_datasource(self):
         return self._datasource
 
@@ -241,8 +247,8 @@ class Server(asyncore.dispatcher, object):
 
 
 class ServerChannel(Protocol):
-    def __init__(self, conn, server):
-        Protocol.__init__(self, conn)
+    def __init__(self, conn, server, map=None):
+        Protocol.__init__(self, conn, map=map)
         self.server = server
 
         self.start_auth()
@@ -359,18 +365,31 @@ def run_client():
     parser.add_option("-P", "--port", dest="port", type="int", default=DEFAULT_PORT, help="port")
     parser.add_option("-v", "--verbose", dest="verbose", action="store_true")
     parser.add_option("-V", "--loud", dest="loud", action="store_true")
+    parser.add_option("-s", "--sleep", dest="sleep", default=DEFAULT_CLIENT_TIME_SLEEP_SECONDS, help="sleep")
 
     (options, args) = parser.parse_args()
-                      
+
     if options.verbose:
         logging.basicConfig(level=logging.INFO)
     if options.loud:
         logging.basicConfig(level=logging.DEBUG)
 
-    client = Client()
-    client.password = options.password
-    client.conn(args[0], options.port)
-                      
+    sleep_secs = float(options.sleep)
+
+    while True:
+        try:
+            client = Client()
+            client.password = options.password
+            client.conn(args[0], options.port)
+            break
+
+        except socket.error:
+            time.sleep(sleep_secs)
+
+        except:
+            print "Unexpected error in run_client:", sys.exc_info()[0]
+            break;
+
 
 if __name__ == '__main__':
     run_client()
