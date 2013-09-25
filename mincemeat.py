@@ -45,11 +45,11 @@ DEFAULT_PORT = 11235
 
 
 class Protocol(asynchat.async_chat):
-    def __init__(self, conn=None):
+    def __init__(self, conn=None, map=None):
         if conn:
-            asynchat.async_chat.__init__(self, conn)
+            asynchat.async_chat.__init__(self, conn, map=map)
         else:
-            asynchat.async_chat.__init__(self)
+            asynchat.async_chat.__init__(self, map=map)
 
         self.set_terminator("\n")
         self.buffer = []
@@ -202,7 +202,8 @@ class Client(Protocol):
 
 class Server(asyncore.dispatcher, object):
     def __init__(self):
-        asyncore.dispatcher.__init__(self)
+        self.socket_map = {}
+        asyncore.dispatcher.__init__(self, map=self.socket_map)
         self.mapfn = None
         self.reducefn = None
         self.collectfn = None
@@ -215,7 +216,7 @@ class Server(asyncore.dispatcher, object):
         self.bind(("", port))
         self.listen(1)
         try:
-            asyncore.loop()
+            asyncore.loop(map=self.socket_map)
         except:
             self.close_all()
             raise
@@ -224,7 +225,7 @@ class Server(asyncore.dispatcher, object):
 
     def handle_accept(self):
         conn, addr = self.accept()
-        sc = ServerChannel(conn, self)
+        sc = ServerChannel(conn, self.socket_map, self)
         sc.password = self.password
 
     def handle_close(self):
@@ -241,8 +242,8 @@ class Server(asyncore.dispatcher, object):
 
 
 class ServerChannel(Protocol):
-    def __init__(self, conn, server):
-        Protocol.__init__(self, conn)
+    def __init__(self, conn, map, server):
+        Protocol.__init__(self, conn, map=map)
         self.server = server
 
         self.start_auth()
