@@ -213,6 +213,7 @@ class Server(asyncore.dispatcher, object):
     def run_server(self, password="", port=DEFAULT_PORT):
         self.password = password
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.bind(("", port))
         self.listen(1)
         try:
