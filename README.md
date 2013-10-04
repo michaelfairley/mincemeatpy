@@ -16,8 +16,8 @@ mincemeat.py is:
 Download
 --------
 
-* Just [mincemeat.py](https://raw.github.com/michaelfairley/mincemeatpy/master/mincemeat.py) (v 0.1.3)
-* The [full 0.1.3 release](https://github.com/michaelfairley/mincemeatpy/zipball/v0.1.3) (includes documentation and examples)
+* Just [mincemeat.py](https://raw.github.com/michaelfairley/mincemeatpy/v0.1.4/mincemeat.py) (v 0.1.4)
+* The [full 0.1.4 release](https://github.com/michaelfairley/mincemeatpy/zipball/v0.1.4) (includes documentation and examples)
 * Clone this git repository: `git clone https://github.com/michaelfairley/mincemeatpy.git`
 
 Example
