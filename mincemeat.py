@@ -25,7 +25,7 @@
 
 import asynchat
 import asyncore
-import cPickle as pickle
+import pickle
 import hashlib
 import hmac
 import logging
