@@ -5,7 +5,7 @@
 # Copyright (c) 2010 Michael Fairley
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the 'Software'), to deal
+# of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
@@ -14,7 +14,7 @@
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
 #
-# THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
@@ -38,7 +38,7 @@ import asyncore
 import cPickle as pickle
 
 
-VERSION = '0.1.4'
+VERSION = "0.1.4"
 
 
 DEFAULT_PORT = 11235
@@ -51,7 +51,7 @@ class Protocol(asynchat.async_chat):
         else:
             asynchat.async_chat.__init__(self, map=map)
 
-        self.set_terminator('\n')
+        self.set_terminator("\n")
         self.buffer = []
         self.auth = None
         self.mid_command = False
@@ -60,25 +60,25 @@ class Protocol(asynchat.async_chat):
         self.buffer.append(data)
 
     def send_command(self, command, data=None):
-        if not ':' in command:
-            command += ':'
+        if not ":" in command:
+            command += ":"
         if data:
             pdata = pickle.dumps(data)
             command += str(len(pdata))
-            logging.debug( '<- %s' % command)
-            self.push(command + '\n' + pdata)
+            logging.debug( "<- %s" % command)
+            self.push(command + "\n" + pdata)
         else:
-            logging.debug( '<- %s' % command)
-            self.push(command + '\n')
+            logging.debug( "<- %s" % command)
+            self.push(command + "\n")
 
     def found_terminator(self):
-        if not self.auth == 'Done':
-            command, data = (''.join(self.buffer).split(':',1))
+        if not self.auth == "Done":
+            command, data = (''.join(self.buffer).split(":",1))
             self.process_unauthed_command(command, data)
         elif not self.mid_command:
-            logging.debug('-> %s' % ''.join(self.buffer))
-            command, length = (''.join(self.buffer)).split(':', 1)
-            if command == 'challenge':
+            logging.debug("-> %s" % ''.join(self.buffer))
+            command, length = (''.join(self.buffer)).split(":", 1)
+            if command == "challenge":
                 self.process_command(command, length)
             elif length:
                 self.set_terminator(int(length))
@@ -86,30 +86,30 @@ class Protocol(asynchat.async_chat):
             else:
                 self.process_command(command)
         else: # Read the data segment from the previous command
-            if not self.auth == 'Done':
-                logging.fatal('Recieved pickled data from unauthed source')
+            if not self.auth == "Done":
+                logging.fatal("Recieved pickled data from unauthed source")
                 sys.exit(1)
             data = pickle.loads(''.join(self.buffer))
-            self.set_terminator('\n')
+            self.set_terminator("\n")
             command = self.mid_command
             self.mid_command = None
             self.process_command(command, data)
         self.buffer = []
 
     def send_challenge(self):
-        self.auth = os.urandom(20).encode('hex')
-        self.send_command(':'.join(['challenge', self.auth]))
+        self.auth = os.urandom(20).encode("hex")
+        self.send_command(":".join(["challenge", self.auth]))
 
     def respond_to_challenge(self, command, data):
         mac = hmac.new(self.password, data, hashlib.sha1)
-        self.send_command(':'.join(['auth', mac.digest().encode('hex')]))
+        self.send_command(":".join(["auth", mac.digest().encode("hex")]))
         self.post_auth_init()
 
     def verify_auth(self, command, data):
         mac = hmac.new(self.password, self.auth, hashlib.sha1)
-        if data == mac.digest().encode('hex'):
-            self.auth = 'Done'
-            logging.info('Authenticated other end')
+        if data == mac.digest().encode("hex"):
+            self.auth = "Done"
+            logging.info("Authenticated other end")
         else:
             self.handle_close()
 
@@ -122,7 +122,7 @@ class Protocol(asynchat.async_chat):
         if command in commands:
             commands[command](command, data)
         else:
-            logging.critical('Unknown command received: %s' % (command,))
+            logging.critical("Unknown command received: %s" % (command,))
             self.handle_close()
 
     def process_unauthed_command(self, command, data=None):
@@ -135,7 +135,7 @@ class Protocol(asynchat.async_chat):
         if command in commands:
             commands[command](command, data)
         else:
-            logging.critical('Unknown unauthed command received: %s' % (command,))
+            logging.critical("Unknown unauthed command received: %s" % (command,))
             self.handle_close()
 
 
@@ -165,7 +165,7 @@ class Client(Protocol):
         self.reducefn = types.FunctionType(marshal.loads(reducefn), globals(), 'reducefn')
 
     def call_mapfn(self, command, data):
-        logging.info('Mapping %s' % str(data[0]))
+        logging.info("Mapping %s" % str(data[0]))
         results = {}
         for k, v in self.mapfn(data[0], data[1]):
             if k not in results:
@@ -177,7 +177,7 @@ class Client(Protocol):
         self.send_command('mapdone', (data[0], results))
 
     def call_reducefn(self, command, data):
-        logging.info('Reducing %s' % str(data[0]))
+        logging.info("Reducing %s" % str(data[0]))
         results = self.reducefn(data[0], data[1])
         self.send_command('reducedone', (data[0], results))
 
@@ -210,11 +210,11 @@ class Server(asyncore.dispatcher, object):
         self.datasource = None
         self.password = None
 
-    def run_server(self, password='', port=DEFAULT_PORT):
+    def run_server(self, password="", port=DEFAULT_PORT):
         self.password = password
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.bind(('', port))
+        self.bind(("", port))
         self.listen(1)
         try:
             asyncore.loop(map=self.socket_map)
@@ -250,7 +250,7 @@ class ServerChannel(Protocol):
         self.start_auth()
 
     def handle_close(self):
-        logging.info('Client disconnected')
+        logging.info("Client disconnected")
         self.close()
 
     def start_auth(self):
@@ -356,13 +356,13 @@ class TaskManager:
         del self.working_reduces[data[0]]
 
 def run_client():
-    parser = argparse.ArgumentParser(usage='%(prog)s [options] server_name')
-    parser.add_argument('-p', '--password', dest='password', default='', help='password')
-    parser.add_argument('-P', '--port', dest='port', type=int, default=DEFAULT_PORT, help='port')
-    parser.add_argument('-v', '--verbose', dest='verbose', action='store_true')
-    parser.add_argument('-V', '--loud', dest='loud', action='store_true')
-    parser.add_argument('--version', action='version', version='%(prog)s {0}'.format(VERSION))
-    parser.add_argument('server_name', default='localhost', nargs='?', help='server name')
+    parser = argparse.ArgumentParser(usage="%(prog)s [options] server_name")
+    parser.add_argument("-p", "--password", dest="password", default="", help="password")
+    parser.add_argument("-P", "--port", dest="port", type=int, default=DEFAULT_PORT, help="port")
+    parser.add_argument("-v", "--verbose", dest="verbose", action="store_true")
+    parser.add_argument("-V", "--loud", dest="loud", action="store_true")
+    parser.add_argument("--version", action="version", version="%(prog)s {0}".format(VERSION))
+    parser.add_argument("server_name", default="localhost", nargs="?", help="server name")
 
     options = parser.parse_args()
 
