@@ -23,25 +23,25 @@
 # THE SOFTWARE.
 ################################################################################
 
+import os
+import sys
+import hmac
+import types
+import random
+import socket
+import hashlib
+import marshal
+import logging
+import argparse
 import asynchat
 import asyncore
 import cPickle as pickle
-import hashlib
-import hmac
-import logging
-import marshal
-import optparse
-import os
-import random
-import socket
-import sys
-import types
+
 
 VERSION = "0.1.4"
 
 
 DEFAULT_PORT = 11235
-
 
 
 class Protocol(asynchat.async_chat):
@@ -219,7 +219,7 @@ class Server(asyncore.dispatcher, object):
         try:
             asyncore.loop(map=self.socket_map)
         except:
-            self.close_all()
+            asyncore.close_all()
             raise
 
         return self.taskmanager.results
@@ -356,13 +356,15 @@ class TaskManager:
         del self.working_reduces[data[0]]
 
 def run_client():
-    parser = optparse.OptionParser(usage="%prog [options]", version="%%prog %s"%VERSION)
-    parser.add_option("-p", "--password", dest="password", default="", help="password")
-    parser.add_option("-P", "--port", dest="port", type="int", default=DEFAULT_PORT, help="port")
-    parser.add_option("-v", "--verbose", dest="verbose", action="store_true")
-    parser.add_option("-V", "--loud", dest="loud", action="store_true")
+    parser = argparse.ArgumentParser(usage="%(prog)s [options] server_name")
+    parser.add_argument("-p", "--password", dest="password", default="", help="password")
+    parser.add_argument("-P", "--port", dest="port", type=int, default=DEFAULT_PORT, help="port")
+    parser.add_argument("-v", "--verbose", dest="verbose", action="store_true")
+    parser.add_argument("-V", "--loud", dest="loud", action="store_true")
+    parser.add_argument("--version", action="version", version="%(prog)s {0}".format(VERSION))
+    parser.add_argument("server_name", default="localhost", nargs="?", help="server name")
 
-    (options, args) = parser.parse_args()
+    options = parser.parse_args()
 
     if options.verbose:
         logging.basicConfig(level=logging.INFO)
@@ -371,7 +373,7 @@ def run_client():
 
     client = Client()
     client.password = options.password
-    client.conn(args[0], options.port)
+    client.conn(options.server_name, options.port)
 
 
 if __name__ == '__main__':
