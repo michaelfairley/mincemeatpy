@@ -36,6 +36,7 @@ import argparse
 import asynchat
 import asyncore
 import cPickle as pickle
+import time
 
 
 VERSION = "0.1.4"
@@ -149,6 +150,9 @@ class Client(Protocol):
         self.connect((server, port))
         asyncore.loop()
 
+    def handle_error(self):
+        raise 
+        
     def handle_connect(self):
         pass
 
@@ -361,6 +365,7 @@ def run_client():
     parser.add_argument("-P", "--port", dest="port", type=int, default=DEFAULT_PORT, help="port")
     parser.add_argument("-v", "--verbose", dest="verbose", action="store_true")
     parser.add_argument("-V", "--loud", dest="loud", action="store_true")
+    parser.add_argument("-l", "--loop", dest="loop", action="store_true", help="Silently keep trying to connect")
     parser.add_argument("--version", action="version", version="%(prog)s {0}".format(VERSION))
     parser.add_argument("server_name", default="localhost", nargs="?", help="server name")
 
@@ -370,10 +375,20 @@ def run_client():
         logging.basicConfig(level=logging.INFO)
     if options.loud:
         logging.basicConfig(level=logging.DEBUG)
-
-    client = Client()
-    client.password = options.password
-    client.conn(options.server_name, options.port)
+    
+    while True:
+      client = Client()
+      client.password = options.password
+      try:
+        client.conn(options.server_name, options.port)
+      except socket.error:
+        if not options.loop:
+          print "Server not accepting connections"
+      except Exception as e:            # Don't let an exception shut us down
+        print type(e), e
+      if not options.loop:
+        break
+      time.sleep(0.5)
 
 
 if __name__ == '__main__':
