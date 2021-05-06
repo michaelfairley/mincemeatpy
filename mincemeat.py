@@ -35,7 +35,7 @@ import logging
 import argparse
 import asynchat
 import asyncore
-import cPickle as pickle
+import pickle
 
 
 VERSION = "0.1.4"
